@@ -1,0 +1,136 @@
+import requests
+from bs4 import BeautifulSoup
+import re
+import nltk
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
+from nltk.stem import WordNetLemmatizer
+from sklearn.feature_extraction.text import TfidfVectorizer
+import numpy as np
+# Ensure necessary NLTK resources are available
+nltk.download('punkt')
+nltk.download('stopwords')
+nltk.download('wordnet')
+
+
+# Preprocessing function
+def preprocess_document(document):
+    # Normalization
+    document = document.lower()
+    # Cleaning
+    document = re.sub(r'[^a-zA-Z\s]', ' ', document)
+    # Tokenization
+    tokens = word_tokenize(document)
+    # Lemmatization
+    lemmatizer = WordNetLemmatizer()
+    lemmatized_tokens = [lemmatizer.lemmatize(token) for token in tokens]
+    # Remove stop words
+    stop_words = set(stopwords.words('english'))
+    tokens = [lemmatizer.lemmatize(word) for word in tokens]
+
+    filtered_tokens = [word for word in tokens if word not in stop_words]
+
+
+    return ' '.join(filtered_tokens)
+
+
+# Function to generate documents based on phrases
+def generate_documents(phrases):
+    templates = [
+        "{} is transforming the world.",
+        "The impact of {} on society is profound.",
+        "{} advancements lead to new possibilities.",
+        "Exploring {} reveals untapped potential."
+    ]
+    documents = [template.format(phrase) for phrase in phrases for template in templates]
+    return documents
+
+
+def get_unique(words):
+# Identify Unique Words
+    words = words.split()
+    unique_words = list(set(words))
+    return unique_words
+
+
+class CustomTFIDF:
+    def __init__(self):
+        self.idf_ = {}
+        self.vocab_ = {}
+
+    def fit_transform(self, documents):
+        tf = []
+        doc_count = len(documents)
+
+        # Compute term frequencies and document frequencies for IDF
+        for document in documents:
+            doc_tf = {}
+            words = document.split()
+            for word in words:
+                doc_tf[word] = doc_tf.get(word, 0) + 1
+            for word in doc_tf:
+                doc_tf[word] = doc_tf[word] / len(words)
+                self.idf_[word] = self.idf_.get(word, 0) + 1
+            tf.append(doc_tf)
+
+        # Sort the vocabulary alphabetically and assign indices
+        sorted_vocab = sorted(self.idf_.keys())
+        self.vocab_ = {word: idx for idx, word in enumerate(sorted_vocab)}
+
+        # Compute IDF using the sorted vocabulary
+        for word in self.idf_:
+            self.idf_[word] = np.log((1 + doc_count) / (1 + self.idf_[word])) + 1
+
+        # Compute TF-IDF scores using the sorted vocabulary
+        tfidf = []
+        for doc in tf:
+            doc_tfidf = np.zeros(len(self.vocab_))
+            for word, value in doc.items():
+                if word in self.vocab_:
+                    index = self.vocab_[word]
+                    doc_tfidf[index] = value * self.idf_[word]
+            # L2 Normalization
+            norm = np.linalg.norm(doc_tfidf)
+            if norm > 0:
+                doc_tfidf = doc_tfidf / norm
+            tfidf.append(doc_tfidf)
+
+        return np.array(tfidf)
+
+
+# Example usage
+phrases = ["artificial intelligence", "machine learning", "data science"]
+documents = generate_documents(phrases)
+
+
+preprocessed_docs = [preprocess_document(doc) for doc in documents]
+print(preprocessed_docs)
+
+
+# or merge the documents
+# merged_document = ' '.join(documents)
+# preprocessed_merged_document = preprocess_document(merged_document)
+
+
+# words = preprocess_document(preprocessed_docs)
+unique = [get_unique(doc) for doc in preprocessed_docs]
+
+# unique = get_unique(preprocessed_merged_document)
+
+# print(preprocessed_merged_document)
+print(unique)
+
+# Using CustomTFIDF
+custom_tfidf = CustomTFIDF()
+custom_tfidf_matrix = custom_tfidf.fit_transform(preprocessed_docs)
+
+# Using sklearn for comparison
+tfidf_vectorizer = TfidfVectorizer()
+sklearn_tfidf_matrix = tfidf_vectorizer.fit_transform(preprocessed_docs).toarray()
+
+# Comparing results (simplified, for detailed comparison, iterate over matrices)
+print("Custom TF-IDF vs. sklearn TF-IDF (first document vector):")
+print("Custom:", custom_tfidf_matrix[2])
+
+
+print("sklearn:", sklearn_tfidf_matrix[2])
